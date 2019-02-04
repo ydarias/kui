@@ -20,6 +20,7 @@ const debug = Debug('plugins/apache-composer/cmd/app-config')
 import { properties } from '../../utility/usage'
 import { version } from 'openwhisk-composer/package.json'
 // TODO: delte this line
+
 /**
  * Command handler for the properties command
  *
