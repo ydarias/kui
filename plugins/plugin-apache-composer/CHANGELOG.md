@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.10.1](https://github.com/IBM/kui/compare/@kui-shell/plugin-apache-composer@0.10.0...@kui-shell/plugin-apache-composer@0.10.1) (2019-02-04)
+
+
+### Bug Fixes
+
+* **apache-composer:** test changelog ([bf717aa](https://github.com/IBM/kui/commit/bf717aa))
+* **wskflow:** test ([3d3bcd8](https://github.com/IBM/kui/commit/3d3bcd8))
+
+
+
+
+
 # 0.10.0 (2019-02-04)
 
 
