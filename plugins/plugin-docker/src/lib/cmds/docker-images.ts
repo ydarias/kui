@@ -14,13 +14,55 @@
  * limitations under the License.
  */
 
-const doGetImages = async ({ command, execOptions }) =>
+import { Table, Row, Cell } from "@kui-shell/core/webapp/models/table";
+
+const cellsFromLine = (row: string): Cell[] =>
+  row.split(/\t+|\s{2,}/).map(cell => new Cell({ value: cell }));
+
+const rowsFromLines = (lines: string[]): Row[] => {
+  return lines
+    .filter(line => line && line.length > 0)
+    .map(line => {
+      const cells = cellsFromLine(line);
+
+      return new Row({
+        name: cells[0].value,
+        attributes: cells.slice(1)
+      });
+    });
+};
+
+const headerFromLine = (line: string): Row => {
+  const cells = cellsFromLine(line);
+
+  return new Row({
+    name: cells[0].value,
+    attributes: cells.slice(1)
+  });
+};
+
+const toNiceTable = (output: string) => {
+  const rows = output.split(/[\n\r]/);
+
+  const headerRow = headerFromLine(rows[0]);
+
+  const body = rowsFromLines(rows.slice(1));
+
+  return new Table({
+    noEntityColors: true,
+    noSort: true,
+    header: headerRow,
+    body
+  });
+};
+
+const doGetImages = async args =>
   new Promise(async (resolve, reject) => {
     const shell = await import("shelljs");
     const proc = shell.exec("docker images", {
       async: true,
       silent: true,
-      env: Object.assign({}, process.env, execOptions.env || {}, {
+      env: Object.assign({}, process.env, args.execOptions.env || {}, {
         IBMCLOUD_COLOR: true,
         IBMCLOUD_VERSION_CHECK: false
       })
@@ -39,7 +81,7 @@ const doGetImages = async ({ command, execOptions }) =>
         console.log("Something went wrong");
       }
     });
-  });
+  }).then(toNiceTable);
 
 export default (commandTree, prequire) => {
   commandTree.listen("/docker/images", doGetImages, {
