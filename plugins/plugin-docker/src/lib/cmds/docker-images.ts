@@ -14,52 +14,36 @@
  * limitations under the License.
  */
 
-import { Row, Table, Cell } from "@kui-shell/core/webapp/models/table";
-const repl = require("@kui-shell/core/core/repl");
+const doGetImages = async ({ command, execOptions }) =>
+  new Promise(async (resolve, reject) => {
+    const shell = await import("shelljs");
+    const proc = shell.exec("docker images", {
+      async: true,
+      silent: true,
+      env: Object.assign({}, process.env, execOptions.env || {}, {
+        IBMCLOUD_COLOR: true,
+        IBMCLOUD_VERSION_CHECK: false
+      })
+    });
 
-const addClickHandlers = (table: Table): Table => {
-  console.log(`Converting to a nice table`);
+    let rawOut = "";
 
-  const body: Row[] = table.body.map(
-    (row): Row => {
-      const nameAttr = row.attributes.find(({ key }) => key === "NAME");
-      const { value: contextName } = nameAttr;
+    proc.stdout.on("data", async data => {
+      rawOut += `${data}`;
+    });
 
-      nameAttr.outerCSS += " entity-name-group-narrow";
-
-      row.name = contextName;
-      nameAttr.onclick = onclick;
-
-      return row;
-    }
-  );
-
-  return new Table({
-    header: table.header,
-    body: body,
-    title: "Docker images"
+    proc.on("close", async exitCode => {
+      if (exitCode === 0) {
+        resolve(rawOut);
+      } else {
+        console.log("Something went wrong");
+      }
+    });
   });
-};
 
-const usage = {
-  add: {
-    command: "docker images",
-    strict: "docker images",
-    title: "Docker images list",
-    header: "Images listing of your local Docker",
-    example: "docker images"
-  }
-};
-
-const listImages = () => "This is the docker images output";
-
-/**
- * Register command handlers
- */
 export default (commandTree, prequire) => {
-  commandTree.listen("/docker/images", listImages, {
-    usage,
-    noAuthOk: true,
-    requiresLocal: true
+  commandTree.listen("/docker/images", doGetImages, {
+    requiresLocal: true,
+    noAuthOk: true
   });
 };
