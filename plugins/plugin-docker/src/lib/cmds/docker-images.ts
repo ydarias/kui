@@ -56,9 +56,9 @@ const toNiceTable = (output: string) => {
   });
 };
 
-const doGetImages = async args =>
-  new Promise(async (resolve, reject) => {
-    const shell = await import("shelljs");
+const doGetImages = args =>
+  new Promise((resolve, reject) => {
+    const shell = require("shelljs");
     const proc = shell.exec("docker images", {
       async: true,
       silent: true,
@@ -70,11 +70,11 @@ const doGetImages = async args =>
 
     let rawOut = "";
 
-    proc.stdout.on("data", async data => {
+    proc.stdout.on("data", data => {
       rawOut += `${data}`;
     });
 
-    proc.on("close", async exitCode => {
+    proc.on("close", exitCode => {
       if (exitCode === 0) {
         resolve(rawOut);
       } else {
