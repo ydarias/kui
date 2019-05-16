@@ -14,47 +14,7 @@
  * limitations under the License.
  */
 
-import { Table, Row, Cell } from "@kui-shell/core/webapp/models/table";
-
-const cellsFromLine = (row: string): Cell[] =>
-  row.split(/\t+|\s{2,}/).map(cell => new Cell({ value: cell }));
-
-const rowsFromLines = (lines: string[]): Row[] => {
-  return lines
-    .filter(line => line && line.length > 0)
-    .map(line => {
-      const cells = cellsFromLine(line);
-
-      return new Row({
-        name: cells[0].value,
-        attributes: cells.slice(1)
-      });
-    });
-};
-
-const headerFromLine = (line: string): Row => {
-  const cells = cellsFromLine(line);
-
-  return new Row({
-    name: cells[0].value,
-    attributes: cells.slice(1)
-  });
-};
-
-const toNiceTable = (output: string) => {
-  const rows = output.split(/[\n\r]/);
-
-  const headerRow = headerFromLine(rows[0]);
-
-  const body = rowsFromLines(rows.slice(1));
-
-  return new Table({
-    noEntityColors: true,
-    noSort: true,
-    header: headerRow,
-    body
-  });
-};
+import { TableBuilder } from "../utils/table-builder";
 
 const doGetImages = args =>
   new Promise((resolve, reject) => {
@@ -81,7 +41,7 @@ const doGetImages = args =>
         console.log("Something went wrong");
       }
     });
-  }).then(toNiceTable);
+  }).then((output: string) => new TableBuilder(output).build());
 
 export default (commandTree, prequire) => {
   commandTree.listen("/docker/images", doGetImages, {
