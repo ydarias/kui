@@ -20,6 +20,7 @@ const { cli, keys, selectors, sidecar, sleep } = ui
 const { localDescribe } = common
 
 import * as assert from 'assert'
+import { dirname, join } from 'path'
 import { readFileSync, unlink } from 'fs'
 import { fileSync as tmpFile } from 'tmp'
 import { promisify } from 'util'
@@ -29,28 +30,32 @@ const rows = (N: number) => selectors.xtermRows(N)
 const firstRow = (N: number) => `${rows(N)} > div:first-child`
 const lastRow = (N: number) => `${rows(N)} > div:last-child`
 
+/** we have a custom vimrc, to make sure INSERT shows up */
+const vimrc = join(dirname(require.resolve('@kui-shell/plugin-bash-like/tests/data/marker.json')), 'vimrc')
+
 localDescribe('xterm copy paste', function (this: common.ISuite) {
   before(common.before(this))
   after(common.after(this))
 
-  it('should execute pwd', async () => {
-    try {
-      const res = cli.do(`pwd`, this.app)
+  const emittedText = 'roadhouse'
 
-      // wait for vi to come up
+  it(`should echo ${emittedText}`, async () => {
+    try {
+      const res = cli.do(`echo ${emittedText}`, this.app)
+
+      // wait for the output to appear
       await this.app.client.waitForExist(rows(0))
 
-      const expectedPwd = new RegExp(process.cwd(), 'i')
       await this.app.client.waitUntil(async () => {
-        const txt = await this.app.client.getText(firstRow(0))
-        return expectedPwd.test(txt)
+        const actualText = await this.app.client.getText(firstRow(0))
+        return actualText === emittedText
       })
     } catch (err) {
       return common.oops(this)(err)
     }
   })
 
-  it('should copy from xterm and paste outside of xterm', async () => {
+  it('should copy from xterm output and paste outside of xterm', async () => {
     try {
       await this.app.client.doubleClick(`${firstRow(0)} > span:first-child`)
       await this.app.client.execute(() => document.execCommand('copy'))
@@ -90,7 +95,7 @@ localDescribe('xterm copy paste', function (this: common.ISuite) {
       await this.app.client.keys(ui.ctrlC)
 
       // open vi, so we have an xterm to receive a paste event
-      const res = cli.do(`vi ${file.name}`, this.app)
+      const res = cli.do(`vi -u "${vimrc}" ${file.name}`, this.app)
 
       // wait for vi to come up in alt buffer mode
       await this.app.client.waitForExist(`tab.visible.xterm-alt-buffer-mode`)

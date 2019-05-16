@@ -46,9 +46,6 @@ body .page > .header {
     padding: 0 1.1875em;
     font-weight: 300;
     font-size: 1rem;
-    -webkit-font-smoothing: antialiased;  /* chrome */
-    -moz-osx-font-smoothing: grayscale;   /* firefox */
-    font-smoothing: antialiased;
 }
 .header .deemphasize {
     font-size: 55%;
@@ -172,10 +169,6 @@ body.still-loading .repl {
     padding: 1em 0 0;
     display: flex;
     flex-direction: column;
-}
-.repl-block.repl-active, .repl-block.processing {
-    /* for the bottom-most block, add a bit of bottom padding, to avoid smashing into the bottom of the viewport */
-    padding-bottom: 0.5em;
 }
 body:not(.subwindow) repl.sidecar-visible .repl-block, .sidecar-full-screen repl .repl-block {
     border-color: transparent;
@@ -368,7 +361,6 @@ body/*:not(.sidecar-full-screen)*/ repl.sidecar-visible .repl-selection, body/*.
     font-size: 0.875em;
 }
 .repl input, .repl-input-like {
-    font-weight: 500; /* make it a bit more substantial; IBM Plex Mono 400 is too light */
     color: var(--color-text-01);
     background: transparent;
     border: none;
@@ -736,10 +728,7 @@ body[kui-theme-style="dark"] sidecar:not(.minimized) .sidecar-bottom-stripe {
     min-height: 3rem; /* important for screenshot, which tries to maximally squish the sidecar height */
     display: flex;
     z-index: 5;
-    font-weight: 400;
-    -webkit-font-smoothing: antialiased;  /* chrome */
-    -moz-osx-font-smoothing: grayscale;   /* firefox */
-    font-smoothing: antialiased;
+    font-weight: 300;
 }
 sidecar .sidecar-bottom-stripe > div {
     font-size: 0.875em;
@@ -2895,8 +2884,8 @@ body {
     --color-scrollbar-thumb-outline: transparent;
     --color-scrollbar-track: transparent;
 
-    --font-sans-serif: "IBM Plex Sans", sans-serif;
-    --font-monospace: "Roboto Mono",Courier,monospace;
+    --font-sans-serif: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+    --font-monospace: -apple-system,SFMono-Regular,"SF Mono",Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
 
     --color-carbon-components-h3: var(--color-cyan);
     --color-hover-primary-text: var(--color-cyan);
@@ -2989,33 +2978,47 @@ body {
     }
 }
 
-body[kui-theme-option="minimal"] .result-as-table .result-table {
+.result-as-table .result-table[kui-table-style="Light"] {
     border: none;
+    margin-top: 0.5em;
 }
-body[kui-theme-option="minimal"] .result-as-table .result-table .header-row .header-cell, body[kui-theme-option="minimal"] .result-as-table.result-table .header-row .header-cell {
+.result-as-table .result-table[kui-table-style="Light"] .header-row .header-cell, .result-as-table.result-table[kui-table-style="Light"] .header-row .header-cell {
     background: none;
     border-bottom-color: var(--color-base04);
 }
-body[kui-theme-option="minimal"] .result-as-table .log-lines .log-line .log-line-bar-field, body[kui-theme-option="minimal"] .repl .log-lines .log-line .log-field {
+.result-as-table .log-lines[kui-table-style="Light"] .log-line .log-line-bar-field, .repl .log-lines[kui-table-style="Light"] .log-line .log-field {
     border: none;
 }
-body[kui-theme-option="minimal"] .result-table .entity td {
+.result-table[kui-table-style="Light"] .entity td {
     background: none;
 }
-body[kui-theme-option="minimal"] .log-lines .log-line {
-    height: 2em;
+.log-lines[kui-table-style="Light"] .log-line {
+    height: 1.5em;
 }
-body[kui-theme-option="minimal"] .result-table .entity .entity-attributes {
+.result-table[kui-table-style="Light"] .entity .entity-attributes {
     background: none !important;
-    height: 2em;
+    height: 1.5em;
 }
-body[kui-theme-option="minimal"] .entity-attributes > span {
+[kui-table-style="Light"] .entity-attributes > span {
     border: none;
 }
-body[kui-theme-option="minimal"] badge {
+[kui-table-style="Light"] badge {
     height: 1.75em;
     line-height: 1.75em;
 }
-body[kui-theme-option="minimal"] .result-as-table .result-table-title {
+.result-as-table .result-table-outer[kui-table-style="Light"] .result-table-title {
     padding-left: 0.75em;
 }
+
+@font-face { font-family: "SF Mono"; font-weight: 200; font-style: normal; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Light.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 200; font-style: italic; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-LightItalic.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 400; font-style: normal; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Regular.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 400; font-style: italic; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-RegularItalic.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 500; font-style: normal; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Medium.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 500; font-style: italic; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-MediumItalic.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 600; font-style: normal; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Semibold.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 600; font-style: italic; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-SemiboldItalic.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 700; font-style: normal; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Bold.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 700; font-style: italic; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-BoldItalic.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 800; font-style: normal; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Heavy.otf); }
+@font-face { font-family: "SF Mono"; font-weight: 800; font-style: italic; src: url(file:///Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-HeavyItalic.otf); }

@@ -14,19 +14,10 @@
  * limitations under the License.
  */
 
-import * as common from '@kui-shell/core/tests/lib/common'
-import { cli } from '@kui-shell/core/tests/lib/ui'
-import * as assert from 'assert'
+import tekton from './lib/tekton2graph'
 
-describe('helm commands', function (this: common.ISuite) {
-  before(common.before(this))
-  after(common.after(this))
+import { CommandRegistrar } from '@kui-shell/core/models/command'
 
-  const lists = ['list', 'ls']
-
-  lists.forEach(list => {
-    it(`should list empty releases via helm ${list}`, () => cli.do(`helm ${list}`, this.app)
-      .then(cli.expectBlank)
-      .catch(common.oops(this)))
-  })
-})
+export default async (commandTree: CommandRegistrar) => {
+  return tekton(commandTree)
+}

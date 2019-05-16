@@ -20,12 +20,12 @@ const debug = Debug('plugins/bash-like/pty/client')
 import * as path from 'path'
 import * as xterm from 'xterm'
 import { webLinksInit } from 'xterm/lib/addons/webLinks/webLinks'
-// import * as WebSocket from 'ws'
 
 import eventBus from '@kui-shell/core/core/events'
 import { qexec as $ } from '@kui-shell/core/core/repl'
 import { injectCSS } from '@kui-shell/core/webapp/util/inject'
-import { clearPendingTextSelection, setPendingTextSelection, clearTextSelection, disableInputQueueing, pasteQueuedInput, scrollIntoView } from '@kui-shell/core/webapp/cli'
+import { getSidecar } from '@kui-shell/core/webapp/views/sidecar'
+import { clearPendingTextSelection, setPendingTextSelection, clearTextSelection, disableInputQueueing, pasteQueuedInput, scrollIntoView, sameTab, ITab } from '@kui-shell/core/webapp/cli'
 import { inBrowser, isHeadless } from '@kui-shell/core/core/capabilities'
 import { formatUsage } from '@kui-shell/core/webapp/util/ascii-to-usage'
 
@@ -35,22 +35,6 @@ const enterApplicationModePattern = /\x1b\[\?1h/
 const exitApplicationModePattern = /\x1b\[\?1l/
 const enterAltBufferPattern = /\x1b\[\??(47|1047|1049)h/
 const exitAltBufferPattern = /\x1b\[\??(47|1047|1049)l/
-
-/**
- * Strip off ANSI and other control characters from the given string
- *
- */
-const stripControlCharacters = (str: string): string => {
-  return str.replace(/\x1b\[(\d+;)?\d+m/g, '') // ansi color codes
-    .replace(/^\x08+/, '') // control characters
-    .replace(/^\x1b\[[012]?K/, '')
-    .replace(/^\x1b\[\(B/, '')
-    .replace(/^\x1b\[38;5;(\d+)m/, '')
-    .replace(/^\x1b\[\d?J/, '')
-    .replace(/^\x1b\[\d{0,3};\d{0,3}f/, '')
-    .replace(/^\x1b\[?[\d;]{0,3}/, '')
-    .replace(/^\W*OK\W*\n/, '') // OK at the beginning
-}
 
 /**
  * Strip off ANSI control characters and color codes
@@ -67,7 +51,7 @@ const stripClean = (str: string): string => {
  * Take a hex color string and return the corresponding RGBA with the given alpha
  *
  */
-const alpha = (hex, alpha) => {
+const alpha = (hex: string, alpha: number): string => {
   if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
     const red = parseInt(hex.slice(1,3), 16)
     const green = parseInt(hex.slice(3,5), 16)
@@ -82,6 +66,9 @@ const alpha = (hex, alpha) => {
 class Resizer {
   private currentAsync: NodeJS.Timeout
 
+  /** our tab */
+  private tab: ITab
+
   /** exit alt buffer mode async */
   private exitAlt?: NodeJS.Timeout
 
@@ -92,22 +79,30 @@ class Resizer {
   private app = false
 
   /** have we already deleted empty rows? */
-  private frozen = false
+  private _frozen = false
 
   private readonly terminal: xterm.Terminal
   private _ws: Channel
   private readonly resizeNow: any
 
-  constructor (terminal: xterm.Terminal) {
+  constructor (terminal: xterm.Terminal, tab: ITab) {
+    this.tab = tab
     this.terminal = terminal
 
     const resizeNow = this.scheduleResize.bind(this)
     window.addEventListener('resize', resizeNow) // window resize
-    eventBus.on('/sidecar/toggle', resizeNow) // sidecar resize
 
-    this.alt = true
+    const ourTab = tab
+    eventBus.on('/sidecar/toggle', ({ tab }: { tab: ITab }) => {
+      // sidecar resize
+      if (sameTab(tab, ourTab)) {
+        resizeNow()
+      } else {
+        debug('toggle event, but not for our sidecar')
+      }
+    })
+
     resizeNow()
-    this.alt = false
   }
 
   get ws (): Channel {
@@ -137,7 +132,7 @@ class Resizer {
       return
     }
 
-    debug('hideTrailingEmptyBlanks', remove, from)
+    // debug('hideTrailingEmptyBlanks', remove, from)
 
     if (!remove) {
       const hidden = this.terminal.element.querySelectorAll('.xterm-rows > .xterm-hidden-row')
@@ -145,7 +140,7 @@ class Resizer {
         hidden[idx].classList.remove('xterm-hidden-row')
       }
     } else {
-      this.frozen = true
+      this._frozen = true
     }
 
     const rows = this.terminal.element.querySelector('.xterm-rows').children
@@ -205,24 +200,32 @@ class Resizer {
       + parseInt(style.getPropertyValue('padding-bottom') || '0', 10)
   }
 
-  static getSize (terminal: xterm.Terminal, altBuffer = false) {
-    const selectorForWidth = altBuffer ? '.tab-container' : 'tab.visible .repl-inner .repl-block .repl-output'
-    const widthElement = document.querySelector(selectorForWidth)
+  static getSize (terminal: xterm.Terminal, tab: Element) {
+    const selectorForWidth = '.repl-inner .repl-block.processing .repl-output'
+    const widthElement = tab.querySelector(selectorForWidth)
     const width = widthElement.getBoundingClientRect().width - this.paddingHorizontal(widthElement)
 
-    const selectorForHeight = altBuffer ? selectorForWidth : 'tab.visible .repl-inner'
-    const heightElement = selectorForHeight === selectorForWidth ? widthElement : document.querySelector(selectorForHeight)
+    const selectorForHeight = '.repl-inner'
+    const heightElement = tab.querySelector(selectorForHeight)
     const height = heightElement.getBoundingClientRect().height - this.paddingVertical(heightElement)
 
     const cols = Math.floor(width / terminal['_core'].renderer.dimensions.actualCellWidth)
     const rows = Math.floor(height / terminal['_core'].renderer.dimensions.actualCellHeight)
 
-    debug('getSize', cols, rows, width, height, altBuffer)
+    debug('getSize', cols, rows, width, height)
     return { rows, cols }
   }
 
+  get frozen (): boolean {
+    return this._frozen
+  }
+
   private resize () {
-    const { rows, cols } = Resizer.getSize(this.terminal, this.inAltBufferMode())
+    if (this.frozen) {
+      return
+    }
+
+    const { rows, cols } = Resizer.getSize(this.terminal, this.tab)
     debug('resize', cols, rows, this.terminal.cols, this.terminal.rows, this.inAltBufferMode())
 
     if (this.terminal.rows !== rows || this.terminal.cols !== cols) {
@@ -250,14 +253,14 @@ class Resizer {
   enterApplicationMode () {
     debug('switching to application mode')
     this.app = true
-    document.querySelector('tab.visible').classList.add('xterm-application-mode')
+    this.tab.classList.add('xterm-application-mode')
     this.scheduleResize(20)
   }
 
   exitApplicationMode () {
     debug('switching out of application mode')
     this.app = false
-    document.querySelector('tab.visible').classList.remove('xterm-application-mode')
+    this.tab.classList.remove('xterm-application-mode')
   }
 
   enterAltBufferMode () {
@@ -266,14 +269,33 @@ class Resizer {
     if (this.exitAlt) {
       clearTimeout(this.exitAlt)
     }
-    document.querySelector('tab.visible').classList.add('xterm-alt-buffer-mode')
-    this.scheduleResize(20)
+    this.tab.classList.add('xterm-alt-buffer-mode')
   }
 
   exitAltBufferMode () {
     debug('switching to normal buffer mode')
     this.alt = false
-    document.querySelector('tab.visible').classList.remove('xterm-alt-buffer-mode')
+    this.tab.classList.remove('xterm-alt-buffer-mode')
+  }
+}
+
+/**
+ * Inject current font settings
+ *
+ */
+const injectFont = (terminal: xterm.Terminal) => {
+  try {
+    const fontTheme = getComputedStyle(document.querySelector('body .repl .repl-input input'))
+    const fontSize = parseFloat(fontTheme.fontSize.replace(/px$/, ''))
+    terminal.setOption('fontSize', fontSize)
+
+    debug('fontSize', fontSize)
+
+    // FIXME. not tied to theme
+    terminal.setOption('fontWeight', 400)
+    terminal.setOption('fontWeightBold', 600)
+  } catch (err) {
+    console.error('Error setting terminal font size', err)
   }
 }
 
@@ -317,17 +339,7 @@ const injectTheme = (terminal: xterm.Terminal): void => {
   terminal.setOption('theme', itheme)
   terminal.setOption('fontFamily', val('monospace', 'font'))
 
-  try {
-    const fontTheme = getComputedStyle(document.querySelector('body .repl .repl-input input'))
-    terminal.setOption('fontSize', parseInt(fontTheme.fontSize.replace(/px$/, ''), 10))
-    // terminal.setOption('lineHeight', )//parseInt(fontTheme.lineHeight.replace(/px$/, ''), 10))
-
-    // FIXME. not tied to theme
-    terminal.setOption('fontWeight', 400)
-    terminal.setOption('fontWeightBold', 600)
-  } catch (err) {
-    console.error('Error setting terminal font size', err)
-  }
+  injectFont(terminal)
 }
 
 type ChannelFactory = () => Promise<Channel>
@@ -401,7 +413,7 @@ const getOrCreateChannel = async (cmdline: string, channelFactory: ChannelFactor
  *
  */
 let alreadyInjectedCSS: boolean
-export const doExec = (block: HTMLElement, cmdline: string, execOptions) => new Promise((resolve, reject) => {
+export const doExec = (tab: ITab, block: HTMLElement, cmdline: string, execOptions) => new Promise((resolve, reject) => {
   debug('doExec', cmdline)
 
   if (!alreadyInjectedCSS) {
@@ -418,8 +430,7 @@ export const doExec = (block: HTMLElement, cmdline: string, execOptions) => new 
   // make sure to grab currently visible tab right away (i.e. before
   // any asyncs), so that we can store a reference before the user
   // switches away to another tab
-  const tab = document.querySelector('tab.visible')
-  const scrollRegion = tab.querySelector('.repl-inner')
+  const scrollRegion = tab.querySelector('.repl-inner .repl-block.processing')
 
   // do the rest after injectCSS
   setTimeout(async () => {
@@ -448,9 +459,19 @@ export const doExec = (block: HTMLElement, cmdline: string, execOptions) => new 
       const inject = () => injectTheme(terminal)
       inject() // inject once on startup
       eventBus.on('/theme/change', inject) // and re-inject when the theme changes
-      eventBus.on('/zoom', inject) // respond to font zooming
 
-      const resizer = new Resizer(terminal)
+      const resizer = new Resizer(terminal, tab)
+
+      // respond to font zooming
+      const doZoom = () => {
+        injectFont(terminal)
+        resizer.scheduleResize()
+      }
+      eventBus.on('/zoom', doZoom)
+
+      const cleanupEventHandlers = () => {
+        eventBus.off('/zoom', doZoom)
+      }
 
       // heuristic for hiding empty rows
       terminal.element.classList.add('xterm-empty-row-heuristic')
@@ -515,9 +536,8 @@ export const doExec = (block: HTMLElement, cmdline: string, execOptions) => new 
             }
 
             currentScrollAsync = setTimeout(() => {
-              if (!xtermContainer.classList.contains('xterm-terminated')) {
-                // scrollRegion.scrollTop = scrollRegion.scrollHeight
-                scrollIntoView({ which: '.repl-block:last-child', when: 0 })
+              if (!resizer.frozen) {
+                scrollIntoView({ which: '.repl-block.processing', when: 0, how: 'scrollIntoView' })
               } else {
                 debug('skipping scroll to bottom for terminated xterm')
               }
@@ -602,6 +622,7 @@ export const doExec = (block: HTMLElement, cmdline: string, execOptions) => new 
             ws.removeEventListener('message', onMessage)
             terminal.blur()
 
+            cleanupEventHandlers()
             resizer.exitAltBufferMode()
             resizer.exitApplicationMode()
             resizer.hideTrailingEmptyBlanks(true)
@@ -613,6 +634,15 @@ export const doExec = (block: HTMLElement, cmdline: string, execOptions) => new 
             if (pendingUsage) {
               execOptions.stdout(formatUsage(cmdline, raw, { drilldownWithPip: true }))
             }
+
+            // grab a copy of the terminal now that it has terminated;
+            // see https://github.com/IBM/kui/issues/1393
+            const copy = terminal.element.cloneNode(true) as HTMLElement
+            const viewport = copy.querySelector('.xterm-viewport')
+            copy.removeChild(viewport)
+            copy.classList.remove('enable-mouse-events')
+            xtermContainer.removeChild(terminal.element)
+            xtermContainer.appendChild(copy)
 
             // vi, then :wq, then :q, you will get an exit code of 1, but
             // with no output (raw===''); note how we treat this as "ok",

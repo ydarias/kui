@@ -1,5 +1,10 @@
 .xterm-container .xterm-rows {
     font-family: var(--font-monospace) !important;
+    transition: font-size 10ms ease-in-out;
+}
+
+.xterm-screen, .xterm-container .xterm-rows > div {
+    transition: width 10ms ease-in-out, height 10ms ease-in-out;
 }
 
 tab:not(.xterm-alt-buffer-mode) .xterm-container .xterm-screen {
@@ -10,25 +15,19 @@ tab:not(.xterm-alt-buffer-mode) .xterm-container .xterm-screen {
 tab.xterm-alt-buffer-mode .repl-inner {
     overflow: hidden;
     display: flex;
-    align-items: flex-end;
-    background: var(--color-stripe-01);
+    align-items: flex-start;
     -webkit-app-region: drag; /* for emacs/vi, in case there is a top slice of repl-inner visible */
 }
-tab.xterm-alt-buffer-mode .repl-inner .repl-block {
+tab.xterm-alt-buffer-mode .repl-inner .repl-block.processing {
+    padding: 0;
     -webkit-app-region: no-drag; /* but make sure the content of the blocks are not draggable */
 }
-tab.xterm-alt-buffer-mode .repl-result-spinner {
-    display: none;
-}
-tab.xterm-alt-buffer-mode .repl-block:not(.processing), tab.xterm-alt-buffer-mode .horizontal-landing-zone, tab.xterm-alt-buffer-mode .repl-input {
-    display: none;
-}
-tab.xterm-alt-buffer-mode .repl-output, tab.xterm-alt-buffer-mode .repl-block, tab.xterm-alt-buffer-mode .repl.sidecar-visible .repl-output, tab.xterm-alt-buffer-mode .repl.sidecar-visible .repl-result {
-    padding: 0;
-}
 tab.xterm-alt-buffer-mode .repl {
-    /* give a little bit of left-pad for emacs, vi, etc. see https://github.com/IBM/kui/issues/1331 */
-    padding-left: 4px;
+    background: var(--color-stripe-01);
+    align-items: flex-end; /* snap emacs, vi, nano to the right */
+}
+tab.xterm-alt-buffer-mode .repl-block:not(.processing), tab.xterm-alt-buffer-mode .repl-input, tab.xterm-alt-buffer-mode .repl-result-spinner {
+    display: none;
 }
 
 tab:not(.xterm-alt-buffer-mode) .xterm.xterm-empty-row-heuristic .xterm-rows > div:empty {
@@ -44,11 +43,11 @@ tab:not(.xterm-alt-buffer-mode) .xterm.xterm-empty-row-heuristic .xterm-rows > d
     color: var(--color-text-02);
 }
 
+/* rules for terminated xterm */
 /* hide cursor block for terminated processes */
 .xterm-terminated .xterm-rows .xterm-cursor {
     display: none;
 }
-
 /* try to disable xterm components for terminated processes */
 .xterm-terminated .xterm-helper-textarea {
     display: none;
@@ -60,3 +59,55 @@ tab:not(.xterm-alt-buffer-mode) .xterm.xterm-empty-row-heuristic .xterm-rows > d
     -ms-user-select: none;
     user-select: none;    
 }
+.xterm-terminated .xterm {
+    user-select: unset;
+    -webkit-user-select: unset;
+}
+
+/* override the width and height pixel sizing from DomRenderer */
+.xterm-terminated .xterm-rows {
+    font-size: 1em !important;
+}
+.xterm-terminated .xterm-rows > div {
+    height: auto !important;
+    line-height: normal !important;
+}
+.xterm-container .xterm-rows > div > span {
+    width: auto !important;
+    white-space: pre;
+}
+
+/* themes */
+.xterm-terminated .xterm-rows {
+    background: transparent !important;
+    transition: background 300ms ease-in-out;
+}
+.xterm-terminated .xterm-rows > div > span {
+    transition: color 300ms ease-in-out;
+    color: var(--color-text-01) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-0, .xterm-terminated .xterm-rows .xterm-fg-8 {
+    color: var(--color-black) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-1, .xterm-terminated .xterm-rows .xterm-fg-9 {
+    color: var(--color-red) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-2, .xterm-terminated .xterm-rows .xterm-fg-10 {
+    color: var(--color-green) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-3, .xterm-terminated .xterm-rows .xterm-fg-11 {
+    color: var(--color-yellow) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-4, .xterm-terminated .xterm-rows .xterm-fg-12 {
+    color: var(--color-blue) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-5, .xterm-terminated .xterm-rows .xterm-fg-13 {
+    color: var(--color-magenta) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-6, .xterm-terminated .xterm-rows .xterm-fg-14 {
+    color: var(--color-cyan) !important;
+}
+.xterm-terminated .xterm-rows .xterm-fg-7, .xterm-terminated .xterm-rows .xterm-fg-15 {
+    color: var(--color-white) !important;
+}
+

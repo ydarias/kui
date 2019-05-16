@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Application } from 'spectron'
+import { Application, SpectronClient } from 'spectron'
 import { ISuite } from '@kui-shell/core/tests/lib/common'
 import * as common from '@kui-shell/core/tests/lib/common' // tslint:disable-line:no-duplicate-imports
 import * as ui from '@kui-shell/core/tests/lib/ui'
@@ -26,10 +26,12 @@ import { dirname, join } from 'path'
 const ROOT = dirname(require.resolve('@kui-shell/plugin-editor/tests/package.json'))
 
 /** set the monaco editor text */
-const setValue = (client, text) => {
-  return client.execute(text => {
+const setValue = async (app: Application, text: string) => {
+  await app.client.execute(text => {
     document.querySelector('.monaco-editor-wrapper')['editor'].setValue(text)
   }, text)
+
+  return grabFocus(app)
 }
 
 /** click the save buttom */
@@ -41,7 +43,7 @@ const save = (app: Application) => () => {
 }
 
 /** for some reason, monaco inserts a trailing view-line even for one-line files :( */
-const verifyTextExist = (selector: string, expectedText: string) => async (app: Application) => {
+const verifyTextExist = (selector: string, expectedText: string) => async (app: Application): Promise<Application> => {
   await app.client.waitUntil(async () => {
     const actualText = await app.client.getText(selector)
     return actualText.replace(/\s+$/, '') === expectedText
@@ -50,7 +52,13 @@ const verifyTextExist = (selector: string, expectedText: string) => async (app: 
   return app
 }
 
-localDescribe('editor', function (this: ISuite) {
+/** grab focus for the editor */
+const grabFocus = async (app: Application) => {
+  const selector = `${ui.selectors.SIDECAR} .monaco-editor-wrapper .view-lines`
+  await app.client.click(selector).then(() => app.client.waitForEnabled(selector))
+}
+
+localDescribe('editor basics', function (this: ISuite) {
   before(common.before(this))
   after(common.after(this))
 
@@ -100,7 +108,8 @@ localDescribe('editor', function (this: ISuite) {
   it('should edit but not save the content of an existing file', () => cli.do(`edit ${tmpFilepath}`, this.app)
      .then(cli.expectJustOK)
      .then(sidecar.expectOpen)
-     .then(() => setValue(this.app.client, 'should not be saved'))
+     .then(verifyTextExist(`${ui.selectors.SIDECAR} .monaco-editor .view-lines`, initialContent))
+     .then(() => setValue(this.app, 'should not be saved'))
      .catch(common.oops(this)))
 
   it('should re-open the file and see the unchanged content', () => cli.do(`open ${tmpFilepath}`, this.app)
@@ -112,7 +121,8 @@ localDescribe('editor', function (this: ISuite) {
   it('should edit and save the content', () => cli.do('edit /tmp/edit-file.txt', this.app)
      .then(cli.expectJustOK)
      .then(sidecar.expectOpen)
-     .then(() => setValue(this.app.client, updatedText))
+     .then(verifyTextExist(`${ui.selectors.SIDECAR} .monaco-editor .view-lines`, initialContent))
+     .then(() => setValue(this.app, updatedText))
      .then(save(this.app))
      .catch(common.oops(this)))
 
@@ -142,7 +152,7 @@ localDescribe('editor', function (this: ISuite) {
      .then(cli.expectJustOK)
      .then(sidecar.expectOpen)
      .then(verifyTextExist(`${ui.selectors.SIDECAR} .monaco-editor .view-lines`, updatedText))
-     .then(() => setValue(this.app.client, ''))
+     .then(() => setValue(this.app, ''))
      .then(() => this.app.electron.clipboard.writeText(textToPaste))
      .then(() => this.app.client.execute(() => document.execCommand('paste')))
      .then(() => this.app)

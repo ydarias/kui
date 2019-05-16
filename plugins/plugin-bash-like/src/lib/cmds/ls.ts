@@ -22,23 +22,26 @@ import { isAbsolute, join } from 'path'
 
 import * as expandHomeDir from 'expand-home-dir'
 
-import UsageError from '@kui-shell/core/core/usage-error'
-import { Row, Table } from '@kui-shell/core/webapp/models/table'
 import * as repl from '@kui-shell/core/core/repl'
+import UsageError from '@kui-shell/core/core/usage-error'
+import { CommandRegistrar, IEvaluatorArgs, ParsedOptions } from '@kui-shell/core/models/command'
+import { Row, Table, TableStyle } from '@kui-shell/core/webapp/models/table'
 import { findFile, isSpecialDirectory } from '@kui-shell/core/core/find-file'
 
-import { doShell } from './bash-like'
+import { doExec } from './bash-like'
 import { localFilepath } from '../util/usage-helpers'
 
 /** flatten an array of arrays */
-const flatten = arrays => [].concat.apply([], arrays)
+function flatten<T> (arrays: T[][]): T[] {
+  return [].concat.apply([], arrays)
+}
 
 /**
  * From the end of the given string, scan for the idx that marks the
  * start of some filename in the given fileMap
  *
  */
-const scanForFilename = (str: string, fileMap, endIdx = str.length - 1) => {
+const scanForFilename = (str: string, fileMap: Record<string, boolean>, endIdx = str.length - 1) => {
   let candidate
   let candidateIdx
 
@@ -77,7 +80,7 @@ const myreaddir = (dir: string): Promise<Array<string>> => new Promise((resolve,
         if (err) {
           reject(err)
         } else {
-          resolve(files)
+          resolve(['.', '..'].concat(files))
         }
       })
     }
@@ -88,7 +91,7 @@ const myreaddir = (dir: string): Promise<Array<string>> => new Promise((resolve,
  * If the given filepath is a directory, then ls it, otherwise cat it
  *
  */
-const lsOrOpen = filepath => new Promise((resolve, reject) => {
+const lsOrOpen = (filepath: string) => new Promise((resolve, reject) => {
   const fullpath = findFile(expandHomeDir(filepath))
   const filepathForRepl = repl.encodeComponent(filepath)
 
@@ -110,7 +113,7 @@ const lsOrOpen = filepath => new Promise((resolve, reject) => {
  * Turn ls output into a REPL table
  *
  */
-const tabularize = (cmd, parent = '', parentAsGiven = '') => async (output): Promise< true | Table> => {
+const tabularize = (cmd: string, parsedOptions: ParsedOptions, parent = '', parentAsGiven = '') => async (output: string): Promise< true | Table> => {
   debug('tabularize', parent, parentAsGiven)
 
   if (output.length === 0) {
@@ -216,17 +219,28 @@ const tabularize = (cmd, parent = '', parentAsGiven = '') => async (output): Pro
 
   const outerCSS = 'header-cell'
   const outerCSSSecondary = `${outerCSS} hide-with-sidecar`
+
+  const headerAttributes = [
+    { key: 'owner', value: 'OWNER', outerCSS: outerCSSSecondary },
+    { key: 'group', value: 'GROUP', outerCSS: outerCSSSecondary },
+    { key: 'size', value: 'SIZE', outerCSS: outerCSSSecondary },
+    { key: 'lastmod', value: 'LAST MODIFIED', outerCSS: `${outerCSS} badge-width` }
+  ]
+
+  if (parsedOptions.l) {
+    headerAttributes.splice(0, 0, {
+      key: 'permissions',
+      value: 'PERMISSIONS',
+      outerCSS: outerCSSSecondary
+    })
+  }
+
   const headerRow: Row = {
     name: 'NAME',
     type: 'file',
     onclick: false,
     outerCSS,
-    attributes: [
-      { key: 'owner', value: 'OWNER', outerCSS: outerCSSSecondary },
-      { key: 'group', value: 'GROUP', outerCSS: outerCSSSecondary },
-      { key: 'size', value: 'SIZE', outerCSS: outerCSSSecondary },
-      { key: 'lastmod', value: 'LAST MODIFIED', outerCSS: `${outerCSS} badge-width` }
-    ]
+    attributes: headerAttributes
   }
 
   const body: Row[] = rows.map((columns): Row => {
@@ -252,23 +266,35 @@ const tabularize = (cmd, parent = '', parentAsGiven = '') => async (output): Pro
     // idx into the attributes; minus 1 because we slice off the name
     const ownerIdx = 1 - 1
     const groupIdx = 2 - 1
+    const sizeIdx = 3 - 1
     const dateIdx = columns.length - allTrim - 1
+
+    // user asked to sort by time?
+    const sortByTime = parsedOptions.t
+
+    const permissionAttribute = !parsedOptions.l ? [] : [{
+      value: columns[0],
+      css: 'slightly-deemphasize'
+    }]
+
+    const normalAttributes = columns.slice(startTrim, columns.length - endTrim - 1).map((col, idx) => ({
+      value: col,
+      outerCSS: idx !== dateIdx ? 'hide-with-sidecar' : 'badge-width',
+      css: (idx === ownerIdx || idx === groupIdx || (idx === dateIdx && !sortByTime) || (idx === sizeIdx && sortByTime)) ? 'slightly-deemphasize' : ''
+    }))
 
     return new Row({
       type: cmd,
       name: nameForDisplay,
       onclick: () => lsOrOpen(isAbsolute(name) ? name : join(parentAsGiven, name)), // note: ls -l file results in an absolute path
       css,
-      attributes: columns.slice(startTrim, columns.length - endTrim - 1).map((col, idx) => ({
-        value: col,
-        outerCSS: idx !== dateIdx ? 'hide-with-sidecar' : 'badge-width',
-        css: (idx === ownerIdx || idx === groupIdx) ? 'slightly-deemphasize' : idx === dateIdx && 'slightly-deemphasize'
-      }))
+      attributes: permissionAttribute.concat(normalAttributes)
     })
   })
 
   return new Table({
     type: cmd,
+    style: TableStyle.Light,
     noEntityColors: true,
     noSort: true,
     header: headerRow,
@@ -280,9 +306,10 @@ const tabularize = (cmd, parent = '', parentAsGiven = '') => async (output): Pro
  * ls command handler
  *
  */
-const doLs = cmd => ({ command, execOptions, argvNoOptions: argv, parsedOptions: options }): Promise<true | Table> => {
+const doLs = (cmd: string) => ({ command, execOptions, argvNoOptions: argv, parsedOptions: options }: IEvaluatorArgs): Promise<true | Table> => {
   const filepathAsGiven = argv[argv.indexOf(cmd) + 1]
   const filepath = findFile(expandHomeDir(filepathAsGiven), true, true)
+
   debug('doLs filepath', filepathAsGiven, filepath)
 
   if (filepath.match(/app.asar/) && isSpecialDirectory(filepathAsGiven)) {
@@ -290,36 +317,33 @@ const doLs = cmd => ({ command, execOptions, argvNoOptions: argv, parsedOptions:
     throw new Error('File not found')
   }
 
-  const dashFlags = '-lh' +
-    (options.t ? 't' : '') +
-    (options.r ? 'r' : '') +
-    (options.a ? 'a' : '')
-
-  const platformFlags = []
-
-  return doShell(['!', 'ls', dashFlags, ...platformFlags, filepath], options, Object.assign({}, execOptions, {
+  const rest = command.replace(/^\s*(l)?ls/, '')
+  return doExec(`ls -lh ${rest}`, Object.assign({}, execOptions, {
     nested: true,
     raw: true,
     env: {
       LS_COLWIDTHS: '100:100:100:100:100:100:100:100'
     }
   }))
-    .then(tabularize(command, filepath, filepathAsGiven))
-    .catch(message => { throw new UsageError({ message, usage: usage(command) }) })
+    .then(tabularize(command, options, filepath, filepathAsGiven))
 }
 
-const usage = command => ({
+const usage = (command: string) => ({
   strict: command,
   command,
   title: 'local file list',
   header: 'Directory listing of your local filesystem',
   noHelpAlias: true,
   optional: localFilepath.concat([
+    { name: '-A', boolean: true, docs: 'List all entries except for . and ..' },
     { name: '-a', boolean: true, docs: 'Include directory entries whose names begin with a dot (.)' },
+    { name: '-c', boolean: true, docs: 'Use time when file status was last changed for sorting (-t)' },
     { name: '-l', boolean: true, hidden: true },
     { name: '-h', boolean: true, hidden: true },
     { name: '-t', boolean: true, docs: 'Sort by time modified (most recently modified first)' },
-    { name: '-r', boolean: true, docs: 'Reverse the natural sort order' }
+    { name: '-r', boolean: true, docs: 'Reverse the natural sort order' },
+    { name: '-s', boolean: true, hidden: true }, // "show size", which we always do; so hidden: true
+    { name: '-S', boolean: true, docs: 'Sort files by size' }
   ])
 })
 
@@ -327,7 +351,7 @@ const usage = command => ({
  * Register command handlers
  *
  */
-export default (commandTree, prequire) => {
+export default (commandTree: CommandRegistrar) => {
   const ls = commandTree.listen('/ls', doLs('ls'), { usage: usage('ls'), noAuthOk: true, requiresLocal: true })
   commandTree.synonym('/lls', doLs('lls'), ls, { usage: usage('lls'), noAuthOk: true, requiresLocal: true })
 }

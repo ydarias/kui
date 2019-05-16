@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 IBM Corporation
+ * Copyright 2019 IBM Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
-import { CommandTree, CommandRegistrar } from './command'
+import * as common from '@kui-shell/core/tests/lib/common'
+import { cli } from '@kui-shell/core/tests/lib/ui'
 
-// TODO
-export type KuiPlugin = any
+describe('helm commands', function (this: common.ISuite) {
+  before(common.before(this))
+  after(common.after(this))
 
-export type PluginRequire = (route: string, options?: Object) => Promise<KuiPlugin>
+  const lists = ['list', 'ls']
 
-export type PluginRegistration = (commandTree: CommandRegistrar, prequire?: PluginRequire, options?) => Promise<any>
-
-export type PreloadRegistration = (commandTree: CommandRegistrar, prequire: PluginRequire, options?) => Promise<void>
+  lists.forEach(list => {
+    it(`should list empty releases via helm ${list}`, () => cli.do(`helm ${list}`, this.app)
+      .then(cli.expectBlank)
+      .catch(common.oops(this)))
+  })
+})

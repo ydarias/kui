@@ -23,6 +23,7 @@ import { spawn } from 'child_process'
 import { partial } from '@kui-shell/core/webapp/cli'
 import { pexec } from '@kui-shell/core/core/repl'
 import pip from '@kui-shell/core/webapp/picture-in-picture'
+import { CommandRegistrar } from '@kui-shell/core/models/command'
 
 import { handleNonZeroExitCode } from '../util/exec'
 import { asSidecarEntity } from '../util/sidecar-support'
@@ -136,10 +137,10 @@ const doStatus = async ({ command, execOptions }) => new Promise(async (resolve,
 
   let rawOut = ''
   let rawErr = ''
-  proc.stdout.on('data', data => {
+  proc.stdout.on('data', (data: Buffer) => {
     rawOut += data.toString()
   })
-  proc.stderr.on('data', data => {
+  proc.stderr.on('data', (data: Buffer) => {
     rawErr += data.toString()
   })
   proc.on('close', exitCode => {
@@ -205,6 +206,6 @@ const numstat = (): Promise<Stats> => new Promise<Stats>((resolve, reject) => {
  * Register command handlers
  *
  */
-export default (commandTree, prequire) => {
+export default (commandTree: CommandRegistrar) => {
   commandTree.listen('/git/status', doStatus, { needsUI: true, requiresLocal: true, noAuthOk: true })
 }

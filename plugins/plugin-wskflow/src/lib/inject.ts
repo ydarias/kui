@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 IBM Corporation
+ * Copyright 2018 IBM Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,16 @@
  * limitations under the License.
  */
 
-// the default tab we expect to see on "get"
-exports.defaultModeForGet = 'summary'
+import { inBrowser } from '@kui-shell/core/core/capabilities'
+import { injectCSS } from '@kui-shell/core/webapp/util/inject'
 
+import { dirname, join } from 'path'
+
+export default () => {
+  if (inBrowser()) {
+    injectCSS({ css: require('@kui-shell/plugin-wskflow/web/css/wskflow.css').toString(), key: 'wskflow' })
+  } else {
+    const ourRoot = dirname(require.resolve('@kui-shell/plugin-wskflow/package.json'))
+    injectCSS(join(ourRoot, 'web/css/wskflow.css'))
+  }
+}

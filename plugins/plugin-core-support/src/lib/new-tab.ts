@@ -26,10 +26,10 @@ import { isVisible as isSidecarVisible,
          clearSelection } from '@kui-shell/core/webapp/views/sidecar'
 import sidecarSelector from '@kui-shell/core/webapp/views/sidecar-selector'
 import { element, removeAllDomChildren } from '@kui-shell/core/webapp/util/dom'
-import { listen, getCurrentPrompt, setStatus } from '@kui-shell/core/webapp/cli'
+import { listen, getCurrentPrompt, getCurrentTab, getTabIndex, ITab, setStatus } from '@kui-shell/core/webapp/cli'
 import eventBus from '@kui-shell/core/core/events'
 import { pexec, qexec } from '@kui-shell/core/core/repl'
-import { CommandRegistrar, IEvent, ExecType } from '@kui-shell/core/models/command'
+import { CommandRegistrar, IEvent, ExecType, IEvaluatorArgs } from '@kui-shell/core/models/command'
 
 const usage = {
   strict: 'switch',
@@ -43,13 +43,39 @@ const usage = {
  * Helper methods to crawl the DOM
  *
  */
-const getCurrentTab = () => element('.main > .tab-container > tab.visible')
+const getTabButton = (tab: ITab) => element(`.main .left-tab-stripe .left-tab-stripe-button[data-tab-button-index="${getTabIndex(tab)}"]`)
 const getCurrentTabButton = () => element('.main .left-tab-stripe .left-tab-stripe-button-selected')
-const getCurrentTabButtonLabel = () => element('.left-tab-stripe-button-label', getCurrentTabButton())
+const getTabButtonLabel = (tab: ITab) => getTabButton(tab).querySelector('.left-tab-stripe-button-label') as HTMLElement
+
+/**
+ * Otherwise global state that we want to keep per tab
+ *
+ */
+class TabState {
+  /** environment variables */
+  readonly env: Record<string, string>
+
+  /** current working directory */
+  readonly cwd: string
+
+  constructor () {
+    this.env = Object.assign({}, process.env)
+    this.cwd = process.cwd().slice(0) // just in case, copy the string
+
+    debug('captured tab state', this.cwd)
+  }
+
+  restore () {
+    debug('changing cwd', process.cwd(), this.cwd)
+    process.chdir(this.cwd)
+    process.env = this.env
+  }
+}
 
 const switchTab = (tabIndex: number, activateOnly = false) => {
   debug('switchTab', tabIndex)
 
+  const currentTab = getCurrentTab()
   const nextTab = document.querySelector(`.main > .tab-container > tab[data-tab-index="${tabIndex}"]`)
   const nextTabButton = document.querySelector(`.main .left-tab-stripe .left-tab-stripe-button[data-tab-button-index="${tabIndex}"]`)
   debug('nextTab', nextTab)
@@ -68,6 +94,13 @@ const switchTab = (tabIndex: number, activateOnly = false) => {
 
     nextTab.classList.add('visible')
     nextTabButton.classList.add('left-tab-stripe-button-selected')
+
+    if (currentTab) {
+      currentTab['state'] = new TabState()
+    }
+    if (nextTab['state']) {
+      (nextTab['state'] as TabState).restore()
+    }
 
     return true
   }
@@ -103,6 +136,8 @@ const addCommandEvaluationListeners = (): void => {
       // ignore drilldown events; keep the top-level command in the display
       debug('got event', event)
 
+      const tab = event.tab || getCurrentTab()
+
       if (event.route !== undefined
           && !event.route.match(/^\/(tab|getting\/started)/) // ignore our own events and help
          ) {
@@ -113,10 +148,10 @@ const addCommandEvaluationListeners = (): void => {
           // need to find a way to capture that sidecar-producing
           // command
           if (!isSidecarVisible()) {
-            getCurrentTabButtonLabel().innerText = '\u00a0'
+            getTabButtonLabel(tab).innerText = '\u00a0'
           }
         } else {
-          getCurrentTabButtonLabel().innerText = event.command
+          getTabButtonLabel(tab).innerText = event.command
         }
       }
     }
@@ -130,7 +165,7 @@ const addCommandEvaluationListeners = (): void => {
  */
 const oneTimeInit = (): void => {
   // focus the current prompt no matter where the user clicks in the left tab stripe
-  (document.querySelector('.main > .left-tab-stripe') as HTMLElement).onclick = evt => {
+  (document.querySelector('.main > .left-tab-stripe') as HTMLElement).onclick = (evt: MouseEvent) => {
     getCurrentPrompt().focus()
   }
 
@@ -164,13 +199,14 @@ const newTab = async (basedOnEvent = false): Promise<boolean> => {
   }
 
   const currentVisibleTab = getCurrentTab()
+  currentVisibleTab['state'] = new TabState()
+
   const nTabs = document.querySelectorAll('.main > .tab-container > tab').length
 
   const newTab = currentVisibleTab.cloneNode(true) as HTMLElement
   const newTabId = (nTabs + 1).toString()
   newTab.setAttribute('data-tab-index', newTabId)
-
-  removeAllDomChildren(newTab.querySelector('.repl-result'))
+  newTab.className = 'visible'
 
   currentVisibleTab.classList.remove('visible')
   currentVisibleTab.parentNode.appendChild(newTab)
@@ -184,13 +220,17 @@ const newTab = async (basedOnEvent = false): Promise<boolean> => {
   newTabButton.setAttribute('data-tab-button-index', newTabId)
   currentTabButton.parentNode.appendChild(newTabButton)
 
-  getCurrentTabButtonLabel().innerText = '\u00a0' // nbsp
+  getTabButtonLabel(currentVisibleTab).innerText = '\u00a0' // nbsp
 
-  const currentlyProcessingBlock = await qexec('clear --keep-current-active')
-  if (currentlyProcessingBlock.nodeName) {
-    debug('new tab cloned from one that is currently processing a command')
+  const currentlyProcessingBlock: true | HTMLElement = await qexec('clear --keep-current-active')
+  if (currentlyProcessingBlock !== true) {
+    debug('new tab cloned from one that is currently processing a command', currentlyProcessingBlock, currentlyProcessingBlock.querySelector('.repl-result').children.length)
     setStatus(currentlyProcessingBlock, 'repl-active')
   }
+
+  // this must occur after the qexec('clear'), otherwise we may select
+  // the wrong repl-result
+  removeAllDomChildren(newTab.querySelector('.repl-result'))
 
   newTabButton.onclick = () => qexec(`tab switch ${newTabId}`)
   clearSelection()
@@ -249,7 +289,7 @@ const perTabInit = (doListen = true) => {
  * Same as newTab, but done asynchronously
  *
  */
-const newTabAsync = ({ execOptions }) => {
+const newTabAsync = ({ execOptions }: IEvaluatorArgs) => {
   if (execOptions.nested) {
     newTab()
     return true
