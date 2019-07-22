@@ -78,7 +78,7 @@ jobs:
             branch: automatic-release
             repo: ydarias/kui
             tags: true
-            condition: type = push && tag =~ v([0-9]{1,3}).([0-9]{1,3}).([0-9]{1,3})$
+            condition: type = push && tag =~ (v[0-9]{1,3}).([0-9]{1,3}).([0-9]{1,3})$
 
 
 
